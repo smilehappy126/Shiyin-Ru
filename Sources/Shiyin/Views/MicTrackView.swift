@@ -17,7 +17,7 @@ struct MicTrackView: View {
 
     enum Part { case track, toggle, info }
 
-    @AppStorage(AppSettings.micTrackCollapsedKey) private var collapsed = false
+    private var collapsed: Bool { model.micTrackCollapsed }
     @State private var selected: Int64?
     @State private var drag: Drag?
     @State private var hoverX: CGFloat?
@@ -100,7 +100,9 @@ struct MicTrackView: View {
     /// 收合鈕：整顆藥丸都能按（使用者：「只有文字可以觸發收合太難按了」）
     private var toggle: some View {
         Button {
-            collapsed.toggle()
+            // 整個切換放進同一個動畫：播放列的高度、底色、上面內容區的大小都跟著時間軸一起滑
+            // （使用者：「底部的白色區塊要跟麥克風區塊一起 slide」）
+            withAnimation(.easeInOut(duration: Self.slide)) { model.micTrackCollapsed.toggle() }
         } label: {
             HStack(spacing: 4) {
                 // 展開時朝上（時間軸在上面，使用者：「展開的 toggle 箭頭改成向上」），收起時轉成朝右

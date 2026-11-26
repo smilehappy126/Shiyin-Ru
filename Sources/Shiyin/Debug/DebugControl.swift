@@ -601,8 +601,9 @@ enum DebugControl {
             }
         case "micpause": model.recorder.setMicPaused(args.count > 1 && args[1] == "on")   // micpause on|off：等於按錄音畫面的麥克風圖示（design §90）
         case "micregions": micRegions(args)
-        case "mictrack":   // mictrack collapse|expand：等於按麥克風時間軸的收合鍵（design §93.5）
-            UserDefaults.standard.set(args.count > 1 && args[1] == "collapse", forKey: AppSettings.micTrackCollapsedKey)
+        case "mictrack":   // mictrack collapse|expand [秒]：等於按麥克風時間軸的收合鍵（design §93.5）；給秒數時放慢，截得到滑到一半的畫面
+            let seconds = args.count > 2 ? Double(args[2]) ?? MicTrackView.slide : MicTrackView.slide
+            withAnimation(.easeInOut(duration: seconds)) { model.micTrackCollapsed = args.count > 1 && args[1] == "collapse" }
         case "miczoom":   // miczoom <倍數> <中心秒數>|pan <秒>|reset：等於 ⌃+／⌃−、左右捲動、⌃0（design §93.5）；目前選取的會議
             let duration = max(model.player.duration, Double(model.detail?.meeting.durationSeconds ?? 0))
             if args.count > 2, args[1] == "pan" { model.micZoom = model.micZoom?.panned(duration: duration, by: Double(args[2]) ?? 0) }

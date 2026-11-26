@@ -4,7 +4,7 @@ import SwiftUI
 struct PlayerBar: View {
     @Environment(AppModel.self) private var model
     /// 麥克風時間軸收起來時，錄音時間軸不框放大的範圍（看不到放大的那條）
-    @AppStorage(AppSettings.micTrackCollapsedKey) private var micCollapsed = false
+    private var micCollapsed: Bool { model.micTrackCollapsed }
     /// 錄音時間軸在播放列裡的位置：麥克風時間軸照這個對齊（design §93.5）
     @State private var timelineFrame: CGRect = .zero
     private static let space = "playerBar"
@@ -99,6 +99,8 @@ struct PlayerBar: View {
         }
         }
         .coordinateSpace(.named(Self.space))
+        // 麥克風時間軸收、開時播放列（含底色）的高度一起滑（design §93.5）
+        .animation(.easeInOut(duration: MicTrackView.slide), value: micCollapsed)
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
         .background(.bar)

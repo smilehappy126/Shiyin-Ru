@@ -752,6 +752,11 @@ final class AppModel {
     private(set) var micDetecting = false
     /// 麥克風時間軸放大後看的範圍（R119.10、design §93.5）；nil 是整場，換會議時清掉
     var micZoom: MicZoom?
+    /// 麥克風時間軸收起來了（design §93.5）：放在這裡、不用 @AppStorage，改的時候 withAnimation 才帶得到整個畫面
+    /// （播放列的底色、上面內容區的大小跟著一起滑）；照舊存在設定裡，下次打開還記得
+    var micTrackCollapsed = UserDefaults.standard.bool(forKey: AppSettings.micTrackCollapsedKey) {
+        didSet { UserDefaults.standard.set(micTrackCollapsed, forKey: AppSettings.micTrackCollapsedKey) }
+    }
     @ObservationIgnored private var micLevelsSource: URL?
 
     private func loadMicLevels() {
