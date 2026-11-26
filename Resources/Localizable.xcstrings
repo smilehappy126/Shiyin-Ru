@@ -5446,6 +5446,23 @@
         }
       }
     },
+    "其餘的麥克風會是沒有聲音，電腦聲音全部保留": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其余的麦克风会是没有声音，电脑声音全部保留"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The rest of the microphone will be silent. Computer audio is kept in full"
+          }
+        }
+      }
+    },
     "再多唸一點：有聲音的部分要 10 秒以上。": {
       "extractionState": "manual",
       "localizations": {
@@ -7221,6 +7238,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Deselect All"
+          }
+        }
+      }
+    },
+    "取消匯出": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消导出"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel Export"
           }
         }
       }
@@ -16846,6 +16880,23 @@
         }
       }
     },
+    "正在匯出… %lld%%": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在导出… %lld%%"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exporting… %lld%%"
+          }
+        }
+      }
+    },
     "正在取得公司的模型…": {
       "extractionState": "manual",
       "localizations": {
@@ -24497,6 +24548,40 @@
         }
       }
     },
+    "這場還沒有建議收錄的區塊（在播放列上方的麥克風時間軸偵測或新增）": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这场还没有建议收录的区块（在播放列上方的麦克风时间轴检测或添加）"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This meeting has no suggested parts yet (detect or add them on the microphone timeline above the player)"
+          }
+        }
+      }
+    },
+    "這場還沒有建議收錄的區塊，麥克風會全部保留。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这场还没有建议收录的区块，麦克风会全部保留。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " This meeting has no suggested parts yet, so the whole microphone is kept."
+          }
+        }
+      }
+    },
     "這場錄音不再提示這件事": {
       "extractionState": "manual",
       "localizations": {
@@ -27617,6 +27702,23 @@
         }
       }
     },
+    "麥克風只保留建議收錄": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "麦克风只保留建议收录"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep Only Suggested Microphone Parts"
+          }
+        }
+      }
+    },
     "麥克風只播建議收錄": {
       "extractionState": "manual",
       "localizations": {
@@ -27630,6 +27732,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Play Suggested Microphone Parts Only"
+          }
+        }
+      }
+    },
+    "麥克風只留建議收錄的區塊，其餘是沒有聲音；電腦聲音全部保留，長度跟原本一樣。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "麦克风只留建议收录的区块，其余是没有声音；电脑声音全部保留，长度跟原本一样。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " Only the suggested microphone parts are kept and the rest is silent. Computer audio is kept in full and the length stays the same."
+          }
+        }
+      }
+    },
+    "麥克風和電腦聲音全部混在一起。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "麦克风和电脑声音全部混在一起。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " The microphone and computer audio are mixed in full."
           }
         }
       }

@@ -79,6 +79,17 @@ public class UtilTests
         Assert.False(ChannelSettings.For(PlayChannels.System, true, [(0, 1)]).GateMic);
     }
 
+    /// <summary>匯出 wav 的混音（R119.6、M§93.6）：區塊外麥克風是 0、電腦聲音照留，長度取兩邊較短的</summary>
+    [Fact]
+    public void MixGatedChannelsForExport()
+    {
+        float[] left = [0.5f, 0.5f, 0.5f, 0.5f, 0.5f], right = [0.2f, 0.2f, 0.2f, 0.2f];
+        var mixed = ChannelMix.MixGatedChannels(left, right, [(0.15, 0.35)], 10);   // 每個取樣 0.1 秒：第 3 個（0.2 秒）在區塊裡、離邊界超過 10 ms
+        Assert.Equal(4, mixed.Length);
+        float both = MathF.Round(0.7f * ChannelMix.Gain, 5), system = MathF.Round(0.2f * ChannelMix.Gain, 5);
+        Assert.Equal([system, system, both, both], mixed.Select(v => MathF.Round(v, 5)));
+    }
+
     /// <summary>GatedMono 記得播到哪裡：跳播時設 Time，接著讀的取樣照那個時間篩</summary>
     [Fact]
     public void GatedMonoTracksTime()

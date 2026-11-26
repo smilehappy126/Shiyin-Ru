@@ -20,8 +20,10 @@ public interface IExportPlatform
     Task MindMapPng(Notes.MindMap.Layout layout, MeetingLanguage language, string path, CancellationToken cancel);
     Task MindMapPdf(Notes.MindMap.Layout layout, MeetingLanguage language, string path, CancellationToken cancel);
     /// <summary>錄音轉成 m4a 或 wav（同格式時直接複製）</summary>
-    /// <summary>mixChannels：「麥克風＋電腦聲音」的錄音，m4a 兩個聲道混在一起（R73.2）</summary>
-    Task Audio(string source, string format, string path, bool mixChannels, CancellationToken cancel);
+    /// <summary>mixChannels：「麥克風＋電腦聲音」的錄音，m4a 兩個聲道混在一起（R73.2）；
+    /// micRegions 有給時麥克風只保留這些區塊，其餘是沒有聲音（R119.6、M§93.6）</summary>
+    Task Audio(string source, string format, string path, bool mixChannels, IReadOnlyList<(double Start, double End)>? micRegions,
+        IProgress<double>? progress, CancellationToken cancel);
 }
 
 public enum ExportItem { Notes, MindMap, Transcript, Audio, Package }
@@ -1417,7 +1419,25 @@ public sealed partial class AppController
     }
 
     /// <summary>寫出檔案；文字格式、封包在背景寫，長會議不卡住畫面（M§21.13）</summary>
-    public async Task Export(ExportItem item, string format, bool times, bool speakers, long meetingId, string path, CancellationToken cancel = default)
+    /// <summary>micRegionsOnly：匯出錄音時麥克風只保留建議收錄（R119.6）；沒給時照設定（匯出對話框的勾選）</summary>
+    /// <summary>progress：錄音、封包的完成比例（R120、design-windows §11.53）；取消時刪掉寫到一半的檔案、丟 OperationCanceledException</summary>
+    public async Task Export(ExportItem item, string format, bool times, bool speakers, long meetingId, string path, CancellationToken cancel = default,
+        bool? micRegionsOnly = null, IProgress<double>? progress = null)
+    {
+        try
+        {
+            await ExportWork(item, format, times, speakers, meetingId, path, cancel, micRegionsOnly, progress);
+            cancel.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException)
+        {
+            try { File.Delete(path); } catch (IOException) { }
+            throw;
+        }
+    }
+
+    async Task ExportWork(ExportItem item, string format, bool times, bool speakers, long meetingId, string path, CancellationToken cancel,
+        bool? micRegionsOnly, IProgress<double>? progress)
     {
         var b = Bundle(meetingId);
         switch (item)
@@ -1441,9 +1461,11 @@ public sealed partial class AppController
                 break;
             case ExportItem.Audio:
                 if (!Paths.HasAudio(b.Meeting)) throw new ExportException(L.T("這場會議沒有錄音檔"));
-                await Platform().Audio(Paths.AudioPath(b.Meeting), format, path, b.Meeting.Channels == "both", cancel);
+                var gate = b.Meeting.Channels == "both" && (micRegionsOnly ?? Settings.ExportMicRegionsOnly) && b.MicRegions.Count > 0;
+                await Platform().Audio(Paths.AudioPath(b.Meeting), format, path, b.Meeting.Channels == "both",
+                    gate ? [.. b.MicRegions.Select(r => (r.Start, r.End))] : null, progress, cancel);
                 break;
-            case ExportItem.Package: await Task.Run(() => MeetingPackage.Export(b, path, Paths, appVersion), cancel); break;
+            case ExportItem.Package: await Task.Run(() => MeetingPackage.Export(b, path, Paths, appVersion, progress, cancel), cancel); break;
         }
     }
 

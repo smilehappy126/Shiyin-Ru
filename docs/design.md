@@ -3341,7 +3341,11 @@ ALTER TABLE meetings ADD COLUMN play_mic_regions INTEGER NOT NULL DEFAULT 0; -- 
 
 - `ExportSheet` 的「錄音」在兩軌的會議多一個勾選「麥克風只保留建議收錄」（`AppSettings.exportMicRegionsOnly`，預設關）；說明「其餘的麥克風會是沒有聲音，電腦聲音全部保留」。沒有區塊時停用並寫原因。
 - 不勾：照 §49.1（不變）。
-- 勾：`AVAssetReader` 解碼成 16 kHz 雙聲道 Float32 → 依區塊對左聲道乘 `gate(t)`（同 91.4 的淡入淡出）→ 混成 `m`（同 91.4）→ wav 寫單聲道 16-bit；m4a 用 `AVAudioFile`（AAC，雙聲道兩邊相同，同 §49.1）。取樣數跟原檔一樣。
+- 勾（`AudioExporter.export(…, micRegionsOnly:)`，沒有區塊時照不勾）：
+  - m4a：同 §49.1 的 `AVAssetExportSession`，混音的 tap 用 `ChannelSettings(.both, gateMic: true, regions:)`，跟播放的「麥克風只播建議收錄」同一個算法（區塊邊界 10 ms 淡入淡出）。
+  - wav：`AudioDecoder.decodeChannels` 兩個聲道各自解碼成 16 kHz，`ChannelMix.mixGated`（m = (L × gate(t) + R) × 0.7071）寫單聲道。
+  - 時長、取樣數跟原檔一樣。
+  - Windows：m4a 在「先混成單聲道再壓縮」那一步改用播放的 `ChannelMix.GatedMono`；wav 用 `DecodeChannels` 加 `ChannelMix.MixGatedChannels`（單元測試在 `UtilTests`）。
 - `.shiyin` 照舊放原始的雙聲道檔。
 
 ### 93.7 DEBUG、驗證
@@ -3355,6 +3359,22 @@ ALTER TABLE meetings ADD COLUMN play_mic_regions INTEGER NOT NULL DEFAULT 0; -- 
   5. `.shiyin` 匯出再匯入區塊一樣；拿掉 `micRegions` 的封包匯入後自動偵測。
   6. 時間軸截圖（淺色、深色、窄視窗、收合）。
 - 要使用者：真的滑鼠拖曳新增、調整邊界、Delete；真的麥克風在安靜、吵的地方各錄一次看門檻。
+
+## 94. 匯出的進度和取消（R120）
+
+Windows 的做法在 design-windows §11.53。
+
+- 進度：`AppModel.export(…, progress: (Double) -> Void)`，0～1；只有錄音、封包會回報，其他項目不回報（畫面照舊轉圈）。百分比變了 1% 以上、或離上次超過 0.2 秒才更新畫面。
+  - m4a：`AVAssetExportSession.states(updateInterval: 0.2)` 的 `.exporting(progress)`，跟 `export(to:as:)` 同時跑。
+  - wav：`AudioDecoder.Stream` 一次讀約 10 秒、照 `estimatedCount` 算；寫檔（`writeWAV`）每 10 秒一段回報、看取消。不勾只保留建議收錄：解碼 0～70%、寫檔 70～100%；勾：解碼 0～50%（`decodeInterleaved`，不拆成各聲道）、混音 50～80%（`mixGated(interleaved:)`，區塊照時間依序往後找，每 10 秒一段回報、看取消）、寫檔 80～100%。原本解碼算到 95% 後混音、寫檔還要 35 秒（DEBUG 版、1.5 小時）卡在 95%、取消也要等寫完，所以拆開。
+  - 封包：複製錄音到暫存資料夾算 0～10%；`ditto` 壓縮時每 0.2 秒看寫出來的檔案多大 ÷（錄音＋參考文件的大小），算 10～99%（錄音已經壓過，壓縮檔跟原檔差不多大）；完成 100%。
+  - 錄音同格式直接複製時不回報（很快）。
+- 取消：匯出在一個 `Task` 裡跑，取消就 `cancel()`。
+  - `AVAssetExportSession.export` 本身會跟著取消；解碼的迴圈、`ditto` 的等待每一輪看 `Task.isCancelled`，`ditto` 用 `terminate()` 停掉。
+  - 丟 `CancellationError`；`AppModel.export` 收到時刪掉寫到一半的輸出檔再往外丟，`ExportSheet` 收到時什麼都不顯示（不是錯誤）。
+- 畫面（`ExportSheet`）：匯出中原本的轉圈換成「正在匯出… 45%」加一條進度條（不回報百分比的項目是不定進度、不寫百分比），旁邊一個「取消」；按了停下來、留在對話框裡可以重來。原本的「取消」（關掉對話框）在匯出中也是取消匯出、再關掉。
+- DEBUG：`export` 指令多寫一個 `<輸出>.progress.json`（收到的每一次進度），`exportcancel` 取消進行中的匯出。
+- 驗證：1.5 小時的錄音匯出 m4a、wav、封包，`progress.json` 一路往前、最後是 1；匯出中 `exportcancel`，輸出檔不在、沒有錯誤訊息。
 
 ## 14. 決策紀錄
 

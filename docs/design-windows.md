@@ -957,6 +957,16 @@ sherpa-onnx 的說話者分段是凝聚式分群（`FastClusteringConfig` 只有
 - **DEBUG**：控制通道的 `micregions`、`playmode`，名稱和參數同 Mac；`state` 的 `player.mix` 同 Mac。
 - **驗證**：`dotnet test`（標準答案 `pipeline/mic-regions.json`、`db/`、封包、`MixGated` 的取樣、編輯會議後的區塊）；虛擬機 `record-sim` 錄一段 6 分鐘以上，`micregions list`、匯出 m4a／wav 讀回取樣（勾的時候區塊外的麥克風是 0），時間軸截圖。虛擬機沒有音效裝置，播放的切換要真的 Windows 電腦（`[~]`）。
 
+### 11.53 匯出的進度和取消（R120，M§94）
+
+- 進度：`AppController.Export(…, IProgress<double>? progress, CancellationToken cancel)`；`IExportPlatform.Audio` 多一個 progress。
+  - m4a：壓縮讀的是 `Cancellable`（包著重新取樣的音源），每讀一段就用讀到的位置 ÷ 原檔長度回報。
+  - wav：解碼（`DecodeChannels`／`Decode`）沒有中間的進度：開始 2%、解碼完 50%（只保留建議收錄）或 70%、混完 80%、寫完 100%；每一步之間看取消。
+  - 封包：錄音放進 zip 時自己一段一段複製（`entry.Open()`，每 1 MB），照已經寫的位元組 ÷ 總大小回報，每一段看取消。
+- 取消：已經有 `CancellationToken`；取消時刪掉寫到一半的檔案（`.tmp` 和輸出檔），`OperationCanceledException` 不顯示錯誤。
+- 畫面：存檔、分享時對話框已經關了，側欄下方（同匯入、模型下載、更新下載那一塊，`BuildFooter`）常駐「正在匯出 <檔名>… 45%」、「取消」、進度條（還沒回報前是不定進度）；做完換成「已匯出 …」，取消了什麼都不顯示。
+- 驗證：單元測試（封包的進度一路往前、取消時檔案刪掉）；虛擬機匯出 1 小時的錄音看提示列。
+
 ## 12. 系統整合
 
 ### 12.1 單一執行個體、開檔

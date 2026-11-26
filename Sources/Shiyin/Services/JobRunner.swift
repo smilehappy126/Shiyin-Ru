@@ -40,7 +40,8 @@ enum AppSettings {
     static let meetingSortKey = "meetingSort"   // 會議列表的排序（design §71）
     static let meetingGroupingKey = "meetingGrouping"   // 會議列表的分組（design §71）
     static let sidebarCollapsedKey = "sidebarCollapsed"   // 側欄收起來的段落（design §75）
-    static let micTrackCollapsedKey = "micTrackCollapsed"   // 播放列上方的麥克風時間軸收合（design §93.5）
+    static let micTrackCollapsedKey = "micTrackCollapsed"
+    static let exportMicRegionsOnlyKey = "exportMicRegionsOnly"   // 匯出錄音時麥克風只保留建議收錄（R119.6、design §93.6）   // 播放列上方的麥克風時間軸收合（design §93.5）
     static let sidebarExpandedKey = "sidebarExpanded"   // 側欄在原地展開的資料夾（design §75）
     static let sidebarOrderKey = "sidebarOrder"   // 側欄資料夾拖曳排好的順序（design §77）
 
@@ -123,6 +124,7 @@ enum AppSettings {
     static var hideFromScreenSharing: Bool { flag(hideFromScreenSharingKey, default: false) }
     /// 錄音中按 ⌃⌥⌘B 標記重點（design §21.10、R19.5）
     static var bookmarkHotKey: Bool { flag(bookmarkHotKeyKey, default: true) }
+    static var exportMicRegionsOnly: Bool { flag(exportMicRegionsOnlyKey, default: false) }
     /// 錄音中按 ⌃⌥⌘S 截圖（R109.1、design §83.2）
     static var screenshotHotKey: Bool { flag(screenshotHotKeyKey, default: true) }
     /// OpenAI 相容 API 整理時附上會議中的畫面（design §83.5），預設關

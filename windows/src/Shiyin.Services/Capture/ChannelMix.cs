@@ -101,6 +101,17 @@ public static class ChannelMix
         }
     }
 
+    /// <summary>匯出 wav 用（M§93.6，同 Mac 的 mixGated）：m = (L × gate(t) + R) × 0.7071，超過 ±1 截掉；長度取兩邊較短的</summary>
+    public static float[] MixGatedChannels(float[] left, float[] right, IEnumerable<(double Start, double End)> regions, int sampleRate)
+    {
+        var sorted = regions.OrderBy(r => r.Start).ToList();
+        var count = Math.Min(left.Length, right.Length);
+        var output = new float[count];
+        for (var i = 0; i < count; i++)
+            output[i] = Math.Clamp((left[i] * (float)Gate(i / (double)sampleRate, sorted) + right[i]) * Gain, -1f, 1f);
+        return output;
+    }
+
     /// <summary>播放用：跟 ToMono 一樣，2 個聲道時照 control 的設定混（M§93.4）；Time 是下一個取樣的時間，跳播時設</summary>
     public sealed class GatedMono(ISampleProvider source, ChannelControl control) : ISampleProvider
     {

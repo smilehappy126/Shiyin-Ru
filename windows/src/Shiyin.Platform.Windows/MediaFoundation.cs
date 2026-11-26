@@ -237,14 +237,17 @@ public sealed class MediaFoundationPcmReader : IPcmReader
 /// </summary>
 public sealed class MediaFoundationCompressor : IAudioCompressor
 {
-    public Task Compress(string wavPath, string m4aPath, CancellationToken cancel) => Task.Run(() =>
+    public Task Compress(string wavPath, string m4aPath, CancellationToken cancel) => Compress(wavPath, m4aPath, cancel, null);
+
+    /// <summary>progress：讀了多少 ÷ 原檔長度（匯出的進度，R120）</summary>
+    public Task Compress(string wavPath, string m4aPath, CancellationToken cancel, IProgress<double>? progress) => Task.Run(() =>
     {
         using var reader = new WaveFileReader(wavPath);
         using var resampled = new MediaFoundationResampler(new StandardFormat(reader), new WaveFormat(48000, 16, reader.WaveFormat.Channels)) { ResamplerQuality = 60 };
         var temp = m4aPath + ".tmp.mp4";
         try
         {
-            MediaFoundationEncoder.EncodeToAac(new Cancellable(resampled, cancel), temp, 96000);
+            MediaFoundationEncoder.EncodeToAac(new Cancellable(resampled, cancel, progress, Expected(reader.TotalTime, resampled.WaveFormat)), temp, 96000);
             cancel.ThrowIfCancellationRequested();
             File.Move(temp, m4aPath, overwrite: true);
         }
@@ -271,10 +274,22 @@ public sealed class MediaFoundationCompressor : IAudioCompressor
     }
 
     /// <summary>取消時讓編碼器讀到檔案結尾</summary>
-    sealed class Cancellable(IWaveProvider inner, CancellationToken cancel) : IWaveProvider
+    /// <summary>照原檔長度估的位元組數（壓縮讀的是重新取樣後的 PCM）</summary>
+    static long Expected(TimeSpan duration, WaveFormat format) => (long)(duration.TotalSeconds * format.AverageBytesPerSecond);
+
+    /// <summary>取消時讀不到東西（編碼器就停）；progress 有給時照讀了多少 ÷ expected 回報（R120）</summary>
+    sealed class Cancellable(IWaveProvider inner, CancellationToken cancel, IProgress<double>? progress = null, long expected = 0) : IWaveProvider
     {
+        long read;
         public WaveFormat WaveFormat => inner.WaveFormat;
-        public int Read(Span<byte> buffer) => cancel.IsCancellationRequested ? 0 : inner.Read(buffer);
+        public int Read(Span<byte> buffer)
+        {
+            if (cancel.IsCancellationRequested) return 0;
+            var n = inner.Read(buffer);
+            read += n;
+            if (progress is not null && expected > 0) progress.Report(Math.Min(0.99, (double)read / expected));
+            return n;
+        }
     }
 
     /// <summary>
@@ -282,12 +297,31 @@ public sealed class MediaFoundationCompressor : IAudioCompressor
     /// mixChannels：「麥克風＋電腦聲音」的錄音（R73.2、design-windows §11.16）：m4a 混成單聲道再壓縮、wav 解碼成單聲道，
     /// 原檔是同一種格式也一樣
     /// </summary>
-    public async Task Export(string source, string format, string destination, CancellationToken cancel, bool mixChannels = false)
+    /// <summary>micRegions：麥克風只保留這些區塊（R119.6、M§93.6），只有 mixChannels 時有作用</summary>
+    /// <summary>progress：完成的比例（R120、design-windows §11.53）；同格式直接複製時不回報</summary>
+    public async Task Export(string source, string format, string destination, CancellationToken cancel, bool mixChannels = false,
+        IReadOnlyList<(double Start, double End)>? micRegions = null, IProgress<double>? progress = null)
     {
         var ext = Importer.Extension(source);
-        if (format == "m4a" && mixChannels) { await CompressMixed(source, destination, cancel); return; }
+        if (format == "m4a" && mixChannels) { await CompressMixed(source, destination, cancel, micRegions, progress); progress?.Report(1); return; }
+        if (format == "wav" && mixChannels && micRegions is not null)
+        {
+            // wav：兩個聲道各自解碼成 16 kHz，麥克風照區塊開關再混成單聲道（同播放的算法）
+            // 進度：解碼完 50%、混完 80%、寫完 100%（解碼、寫檔沒有中間的進度）
+            progress?.Report(0.02);
+            var channels = await Task.Run(() => new MediaFoundationDecoder().DecodeChannels(source, cancel), cancel);
+            if (channels.Length != 2) throw new IOException(L.T("錄音不是雙聲道，沒辦法只保留建議收錄"));
+            cancel.ThrowIfCancellationRequested();
+            progress?.Report(0.5);
+            var mixed = ChannelMix.MixGatedChannels(channels[0], channels[1], micRegions, 16_000);
+            cancel.ThrowIfCancellationRequested();
+            progress?.Report(0.8);
+            using (var gated = new IO.WavWriter(destination, 1)) gated.Write([mixed], mixed.Length);
+            progress?.Report(1);
+            return;
+        }
         if (ext == format && !mixChannels) { File.Copy(source, destination, overwrite: true); return; }
-        if (format == "m4a" && ext == "wav") { await Compress(source, destination, cancel); return; }
+        if (format == "m4a" && ext == "wav") { await Compress(source, destination, cancel, progress); progress?.Report(1); return; }
         if (format == "m4a")
         {
             // 其他格式（匯入的 mp3、mp4…）：先解碼成 WAV 再壓縮
@@ -302,24 +336,32 @@ public sealed class MediaFoundationCompressor : IAudioCompressor
         }
         if (format == "wav")
         {
+            progress?.Report(0.02);
             var samples = await Task.Run(() => new MediaFoundationDecoder().Decode(source, cancel), cancel);
-            using var writer = new IO.WavWriter(destination, 1);
-            writer.Write([samples], samples.Length);
+            cancel.ThrowIfCancellationRequested();
+            progress?.Report(0.7);
+            using (var writer = new IO.WavWriter(destination, 1)) writer.Write([samples], samples.Length);
+            progress?.Report(1);
             return;
         }
         throw new IOException(L.T("不支援這個音訊格式"));
     }
 
     /// <summary>讀原檔、兩個聲道混成單聲道（ChannelMix），照壓縮的做法升頻到 48 kHz、AAC</summary>
-    static Task CompressMixed(string source, string m4aPath, CancellationToken cancel) => Task.Run(() =>
+    /// <summary>micRegions 有給時用播放的 GatedMono（麥克風只留區塊、邊界淡入淡出），不然照舊混</summary>
+    static Task CompressMixed(string source, string m4aPath, CancellationToken cancel, IReadOnlyList<(double Start, double End)>? micRegions = null,
+        IProgress<double>? progress = null) => Task.Run(() =>
     {
         using var reader = MixedAudioSource.OpenReader(source);
-        var mono = new ChannelMix.ToMono(new StandardFormat(reader).ToSampleProvider()).ToWaveProvider16();
+        var samples = new StandardFormat(reader).ToSampleProvider();
+        ISampleProvider mixer = micRegions is null ? new ChannelMix.ToMono(samples)
+            : new ChannelMix.GatedMono(samples, new ChannelControl { Settings = ChannelSettings.For(PlayChannels.Both, true, micRegions) });
+        var mono = mixer.ToWaveProvider16();
         using var resampled = new MediaFoundationResampler(mono, new WaveFormat(48000, 16, 1)) { ResamplerQuality = 60 };
         var temp = m4aPath + ".tmp.mp4";
         try
         {
-            MediaFoundationEncoder.EncodeToAac(new Cancellable(resampled, cancel), temp, 96000);
+            MediaFoundationEncoder.EncodeToAac(new Cancellable(resampled, cancel, progress, Expected(reader.TotalTime, resampled.WaveFormat)), temp, 96000);
             cancel.ThrowIfCancellationRequested();
             File.Move(temp, m4aPath, overwrite: true);
         }

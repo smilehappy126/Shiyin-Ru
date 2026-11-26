@@ -59,6 +59,40 @@ enum ChannelMix {
         return min(1, max(0, min(t - r.start, r.end - t) / fade))
     }
 
+    /// 匯出 wav 用（design §93.6）：交錯排列的雙聲道（左右左右…）混成單聲道，m = (L × gate(t) + R) × 0.7071，超過 ±1 截掉。
+    /// 區塊照時間依序往後找（不是每個取樣都搜尋一次）；progress 有給時每約 10 秒回報一次、看取消（design §94）
+    nonisolated static func mixGated(interleaved: [Float], regions: [MicRegions.Range], sampleRate: Double,
+                                     progress: ((Double) -> Void)? = nil) throws -> [Float] {
+        let sorted = regions.sorted { $0.start < $1.start }
+        let count = interleaved.count / 2
+        var out = [Float](repeating: 0, count: count)
+        let chunk = Int(sampleRate) * 10
+        var next = 0   // 第一個還沒結束的區塊
+        try interleaved.withUnsafeBufferPointer { source in
+            try out.withUnsafeMutableBufferPointer { output in
+                var i = 0
+                while i < count {
+                    let end = min(count, i + chunk)
+                    for f in i..<end {
+                        let t = Double(f) / sampleRate
+                        while next < sorted.count && sorted[next].end <= t { next += 1 }
+                        var g: Float = 0
+                        if next < sorted.count, t >= sorted[next].start {
+                            g = Float(min(1, max(0, min(t - sorted[next].start, sorted[next].end - t) / fade)))
+                        }
+                        output[f] = min(1, max(-1, (source[2 * f] * g + source[2 * f + 1]) * gain))
+                    }
+                    i = end
+                    if let progress {
+                        try Task.checkCancellation()
+                        progress(Double(i) / Double(max(1, count)))
+                    }
+                }
+            }
+        }
+        return out
+    }
+
     /// 音軌是 2 個聲道時，回傳裝了混音 tap 的 AVAudioMix；單聲道、讀不到音軌時是 nil（照原樣播）。
     /// control 沒給時是兩邊都聽、不篩（匯出用）
     static func audioMix(for asset: AVAsset, control: ChannelControl = ChannelControl()) async -> AVAudioMix? {
