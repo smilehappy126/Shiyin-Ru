@@ -121,6 +121,8 @@ public sealed partial class AppController
         runner.EditedDraftReplaced += _ =>
             Notice?.Invoke(L.T("正式版的會議紀錄好了；你改過的草稿留在版本紀錄裡，按紀錄分頁「編輯」旁的「復原上一版」可以找回"));
         runner.Changed += () => Changed?.Invoke(null);
+        // 麥克風的「建議收錄」偵測好了（M§93.2）：重讀那場（時間軸、播放的區塊）
+        runner.MicRegionsDetected += id => Changed?.Invoke(id);
         // 自動放進資料夾了（M§72）
         runner.Organized += Organized;
         // 再找不確定的地方做完（M§88）：找到時 App 展開待確認
@@ -1222,6 +1224,11 @@ public sealed partial class AppController
     {
         try { Db.UpdateUserNotes(id, text); } catch (Microsoft.Data.Sqlite.SqliteException e) { Log.Error($"save user notes failed: {e.SqliteErrorCode}"); }
     }
+
+    /// <summary>聽哪一邊、麥克風只播建議收錄（R119.2、R119.5、M§93.4）</summary>
+    public void SetPlayChannels(long meetingId, Capture.PlayChannels channels) => Perform(meetingId, () => Db.SetPlayChannels(meetingId, channels.Key()));
+
+    public void SetPlayMicRegions(long meetingId, bool on) => Perform(meetingId, () => Db.SetPlayMicRegions(meetingId, on));
 
     public void AddBookmark(long meetingId, double time, string label = "") => Perform(meetingId, () => Db.AddBookmark(meetingId, time, label));
     public void DeleteBookmark(long meetingId, long id) => Perform(meetingId, () => Db.DeleteBookmark(id));

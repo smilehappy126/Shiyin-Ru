@@ -5043,6 +5043,23 @@
         }
       }
     },
+    "兩邊": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "两边"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Both"
+          }
+        }
+      }
+    },
     "公司": {
       "extractionState": "manual",
       "localizations": {
@@ -7374,6 +7391,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "只录麦克风"
+          }
+        }
+      }
+    },
+    "只電腦聲音": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只电脑声音"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Computer Audio Only"
+          }
+        }
+      }
+    },
+    "只麥克風": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只麦克风"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone Only"
           }
         }
       }
@@ -20884,6 +20935,23 @@
         }
       }
     },
+    "聽哪一邊：兩邊、只麥克風、只電腦聲音。勾了「麥克風只播建議收錄」時，麥克風在建議收錄以外是靜音": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "听哪一边：两边、只麦克风、只电脑声音。勾了“麦克风只播建议收录”时，麦克风在建议收录以外是静音"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What to listen to: both, the microphone only, or computer audio only. With “Play Suggested Microphone Parts Only” on, the microphone is silent outside the suggested parts"
+          }
+        }
+      }
+    },
     "聽起來是%@，即時逐字稿和會議語言已經改成%@": {
       "extractionState": "manual",
       "localizations": {
@@ -27227,6 +27295,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "The microphone keeps reconnecting, so the recording may have gaps. Bluetooth headset microphones often do this. Click the microphone name above to switch to the built-in microphone."
+          }
+        }
+      }
+    },
+    "麥克風只播建議收錄": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "麦克风只播建议收录"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play Suggested Microphone Parts Only"
           }
         }
       }

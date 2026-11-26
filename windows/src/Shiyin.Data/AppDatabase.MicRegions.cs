@@ -37,6 +37,13 @@ public sealed partial class AppDatabase
 
     public void DeleteMicRegion(long id) => Write(db => db.Execute("DELETE FROM mic_regions WHERE id = ?", id));
 
+    /// <summary>播放時聽哪一邊（both / mic / system）、麥克風只播建議收錄（R119.2、R119.5），每場會議記住</summary>
+    public void SetPlayChannels(long meetingId, string channels) =>
+        Write(db => db.Execute("UPDATE meetings SET play_channels = ? WHERE id = ?", channels, meetingId));
+
+    public void SetPlayMicRegions(long meetingId, bool on) =>
+        Write(db => db.Execute("UPDATE meetings SET play_mic_regions = ? WHERE id = ?", on, meetingId));
+
     public void ClearMicRegions(long meetingId) => Write(db => db.Execute("DELETE FROM mic_regions WHERE meeting_id = ?", meetingId));
 
     static MicRegion? PlaceMicRegion(Db db, long meetingId, long? replacing, double start, double end)

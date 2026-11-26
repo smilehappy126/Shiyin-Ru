@@ -601,6 +601,10 @@ enum DebugControl {
             }
         case "micpause": model.recorder.setMicPaused(args.count > 1 && args[1] == "on")   // micpause on|off：等於按錄音畫面的麥克風圖示（design §90）
         case "micregions": micRegions(args)
+        case "playmode":   // playmode <both|mic|system> [gate on|off]：等於選播放列的「兩邊 ▾」（design §93.7）；峰值歸零重新算
+            if args.count > 1, let channels = PlayChannels(rawValue: args[1]) { model.setPlayChannels(channels) }
+            if args.count > 3, args[2] == "gate" { model.setPlayMicRegions(args[3] == "on") }
+            ChannelMix.stats.withLock { $0.mixedPeak = 0; $0.micPeak = 0; $0.systemPeak = 0; $0.sourcePeaks = [0, 0] }
         case "livestress":   // livestress <秒> <每秒幾行>：錄音中一直塞長短不一（4～300 字）的假即時文字、偶爾一次好幾行，未定稿的字每秒變 20 次，偶爾往上捲再回到底部（design §25）
             let seconds = Double(args[1]) ?? 60, perSecond = max(Double(args.count > 2 ? args[2] : "") ?? 3, 0.5)
             let recorder = model.recorder
@@ -1340,7 +1344,10 @@ enum DebugControl {
             "player": ["loaded": model.player.isLoaded, "playing": model.player.isPlaying,
                        "time": model.player.currentTime, "duration": model.player.duration, "rate": model.player.rate,
                        "mixing": model.player.isMixing,
-                       "mix": ChannelMix.stats.withLock { ["frames": $0.frames, "sourcePeaks": $0.sourcePeaks, "mixedPeak": $0.mixedPeak] }],
+                       "mix": ChannelMix.stats.withLock { ["frames": $0.frames, "sourcePeaks": $0.sourcePeaks, "mixedPeak": $0.mixedPeak,
+                                                            "micPeak": $0.micPeak, "systemPeak": $0.systemPeak, "gateMic": $0.gateMic,
+                                                            "lastTime": $0.lastTime] },
+                       "channels": model.playChannels.rawValue, "micRegionsOnly": model.detail?.meeting.playMicRegions ?? false],
             "recorder": ["recording": model.recorder.isRecording, "paused": model.recorder.isPaused, "micPaused": model.recorder.micPaused,
                          "meetingId": model.recorder.meetingId ?? -1, "elapsed": model.recorder.elapsed,
                          "micLevel": model.recorder.micLevel, "systemLevel": model.recorder.systemLevel,

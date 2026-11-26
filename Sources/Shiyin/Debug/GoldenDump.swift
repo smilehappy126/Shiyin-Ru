@@ -639,6 +639,11 @@ enum GoldenDump {
             }
             return out
         })
+        // 麥克風的 gate（design §93.4）：區塊裡 1、外面 0、頭尾 10 ms 淡入淡出
+        w.json("util/mic-gate.json", (f["micGateCases"] as? [Object] ?? []).map { c -> Object in
+            let regions = (c["regions"] as? [[Any]] ?? []).map { MicRegions.Range(start: double($0[0]), end: double($0[1])) }
+            return ["key": c["key"] as? String ?? "", "gates": (c["times"] as? [Any] ?? []).map { ChannelMix.gate(double($0), regions) }]
+        })
         // 語言檔推出來的東西（design §41.8）：每種語言的名稱、預設說話者、轉錄的參數、給人看的字、提示詞的字
         let glossarySample = ["Lumio", "Redis", "Kubernetes"]
         w.json("util/languages.json", MeetingLanguage.allCases.map { l -> Object in

@@ -52,6 +52,15 @@ extension AppDatabase {
         _ = try pool.write { db in try MicRegion.deleteOne(db, key: id) }
     }
 
+    /// 播放時聽哪一邊、麥克風只播建議收錄（R119.2、R119.5），每場會議記住
+    func setPlayChannels(_ meetingId: Int64, _ channels: PlayChannels) throws {
+        try pool.write { db in try db.execute(sql: "UPDATE meetings SET play_channels = ? WHERE id = ?", arguments: [channels.rawValue, meetingId]) }
+    }
+
+    func setPlayMicRegions(_ meetingId: Int64, _ on: Bool) throws {
+        try pool.write { db in try db.execute(sql: "UPDATE meetings SET play_mic_regions = ? WHERE id = ?", arguments: [on, meetingId]) }
+    }
+
     func clearMicRegions(_ meetingId: Int64) throws {
         try pool.write { db in try db.execute(sql: "DELETE FROM mic_regions WHERE meeting_id = ?", arguments: [meetingId]) }
     }

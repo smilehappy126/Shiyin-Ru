@@ -9,7 +9,7 @@
 
 ## 麥克風、電腦聲音分開聽，麥克風的「建議收錄」（R119，design §93、design-windows §11.52、D201；2026-11-26 使用者的需求，方案討論後使用者：「開始寫文件」）
 
-- [ ] **MR2 播放**（§93.4、design-windows §11.52）：tap／`MixedAudioSource` 的左右音量和 gate、`Player.setChannels`、播放列的「兩邊 ▾」和「麥克風只播建議收錄」。驗證：Mac `playmode` 各種組合讀 `player.mix` 的峰值、切換中 `currentTime` 不跳（§93.7 第 2 點）；Windows `MixGated` 的單元測試
+- [~] **MR2 播放**（§93.4、§93.5 的播放列選單、design-windows §11.52）：程式完成，Mac DEBUG 版驗過、Windows 單元測試和 app 編譯過（2026-11-26，見 commit 訊息）。還差（要使用者）：Mac 用真的滑鼠打開播放列的「兩邊 ▾」選單、看得到三個選項和勾選、按了聽得出差別（離螢幕的截圖畫不出 SwiftUI 的 Menu）；Windows 要真的電腦（虛擬機沒有音效裝置）：播放中切換三種、勾「麥克風只播建議收錄」聽得出麥克風在區塊外沒聲音，切換時沒有爆音
 - [ ] **MR3 麥克風時間軸**（§93.5）：`MicTrackView`（Mac、Windows）：波形、門檻線、區塊、新增、調整、刪除、右鍵、雙擊、收合、沒偵測過和 tooLittle 的提示。驗證：`micregions add/update/delete` 後截圖（淺色、深色、窄視窗、收合）；Windows 虛擬機截圖；`l10n.py check`、`windows-check`
 - [ ] **MR4 匯出**（§93.6）：`ExportSheet`／`ExportDialog` 的勾選、`AudioExporter`／`MediaFoundationCompressor` 的 gate。驗證：Mac、Windows 匯出 m4a、wav（勾、不勾），讀回取樣：勾的時候區塊外只剩電腦聲音、長度跟原檔一樣（§93.7 第 3 點）
 - [ ] **MR5 使用說明、官網**：Mac、Windows 的使用說明加「麥克風、電腦聲音分開聽」「建議收錄」；官網功能列表加一條（website.md 先寫）。驗證：`l10n.py check`、`windows-check` 沒有缺的英文；`node site/build.mjs` 建得起來
