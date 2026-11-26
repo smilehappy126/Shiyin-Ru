@@ -2032,6 +2032,10 @@ final class AppModel {
                 let meeting = try await Task.detached(priority: .userInitiated) {
                     try MeetingPackage.importPackage(url, db: db, folder: folder)
                 }.value
+                // 舊的封包沒有麥克風的「建議收錄」：背景偵測（design §93.2）
+                if let id = meeting.id, meeting.channels == "both", (try? db.meeting(id))?.micFloorDb == nil {
+                    Task.detached(priority: .utility) { try? MicRegions.run(id, db: db) }
+                }
                 reload()
                 showTrash = false
                 selection = meeting.id
@@ -2110,7 +2114,8 @@ final class AppModel {
         return ExportBundle(meeting: meeting, segments: try db.segments(meetingId),
                             speakers: Dictionary(uniqueKeysWithValues: try db.speakers(meetingId).map { ($0.idx, $0.name) }),
                             bookmarks: try db.bookmarks(meetingId), notes: meeting.decodedNotes, documents: try db.documents(meetingId),
-                            screens: try db.screens(meetingId), folderName: folderName(meeting.folderId))
+                            screens: try db.screens(meetingId), folderName: folderName(meeting.folderId),
+                            micRegions: try db.micRegions(meetingId))
     }
 
     func exportBundle() -> ExportBundle? {

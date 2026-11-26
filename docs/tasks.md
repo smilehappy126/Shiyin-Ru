@@ -7,6 +7,14 @@
 > - 新任務照 SDD：先寫進 `requirements.md`、改 `design.md`，再加到這裡
 > - 需求見 `requirements.md`，設計見 `design.md`（以下簡稱 §）
 
+## 麥克風、電腦聲音分開聽，麥克風的「建議收錄」（R119，design §93、design-windows §11.52、D201；2026-11-26 使用者的需求，方案討論後使用者：「開始寫文件」）
+
+- [ ] **MR2 播放**（§93.4、design-windows §11.52）：tap／`MixedAudioSource` 的左右音量和 gate、`Player.setChannels`、播放列的「兩邊 ▾」和「麥克風只播建議收錄」。驗證：Mac `playmode` 各種組合讀 `player.mix` 的峰值、切換中 `currentTime` 不跳（§93.7 第 2 點）；Windows `MixGated` 的單元測試
+- [ ] **MR3 麥克風時間軸**（§93.5）：`MicTrackView`（Mac、Windows）：波形、門檻線、區塊、新增、調整、刪除、右鍵、雙擊、收合、沒偵測過和 tooLittle 的提示。驗證：`micregions add/update/delete` 後截圖（淺色、深色、窄視窗、收合）；Windows 虛擬機截圖；`l10n.py check`、`windows-check`
+- [ ] **MR4 匯出**（§93.6）：`ExportSheet`／`ExportDialog` 的勾選、`AudioExporter`／`MediaFoundationCompressor` 的 gate。驗證：Mac、Windows 匯出 m4a、wav（勾、不勾），讀回取樣：勾的時候區塊外只剩電腦聲音、長度跟原檔一樣（§93.7 第 3 點）
+- [ ] **MR5 使用說明、官網**：Mac、Windows 的使用說明加「麥克風、電腦聲音分開聽」「建議收錄」；官網功能列表加一條（website.md 先寫）。驗證：`l10n.py check`、`windows-check` 沒有缺的英文；`node site/build.mjs` 建得起來
+- 要使用者（做完後標 `[~]`）：真的滑鼠拖曳新增、調整邊界、Delete；真的麥克風在安靜和吵的地方各錄一次看門檻準不準；Windows 真的電腦上播放切換
+
 ## GitHub #13～#17 的使用者回報（R111～R115；2026-11-24 VIA7 開的 issue，2026-11-25 使用者：「先把可以處理的先處理掉」；2026-11-25 跟 5.2.0（Mac、Windows）發布，#13、#15、#16、#17 已回覆並關閉，#14 等回報者說「無法使用」是哪一種）
 
 - [~] **GS5 Mac 議題帶滑過的卡片**（R113，§87）：程式完成，DEBUG 版驗過（2026-11-25，見 commit 訊息）。還差（要使用者用真的滑鼠）：滑過 0.3 秒出現、移到隔壁那段馬上換、移開收起（模擬的滑鼠移動觸發不了 SwiftUI 的滑過；卡片的內容和位置用 topichover 驗過）

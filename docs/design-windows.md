@@ -944,6 +944,17 @@ sherpa-onnx 的說話者分段是凝聚式分群（`FastClusteringConfig` 只有
 - **測試**：`OrganizeTests.MigrationV18MatchesMac`（`db/migrate-v18.json`）、`ReplaceFolderKeysWithIds`、`FolderIdsCreateRenameMergeDelete`（同名、大小寫、合併時條件的兩種情況、垃圾桶裡的會議、刪除）、`MigrationV14TurnsSeriesIntoFolders`（改成從 v13 的結構接著跑 v14～v18）、`FolderRulesInDatabase`、列表、側欄、重新命名的測試改成 id；`AppTests.SidebarKeysFollowFolderRenameAndDelete`（合併拿掉鍵、留下的照舊位置）、`RenameDialogReadsAndCommits`；`ServicesTests.PackageRoundTrip`（封包寫名字、匯入到新的資料庫建出同名資料夾）；標準答案的會議寫入前先 `CreateFolder`（`Golden.WithFolder`，同 Mac 的 GoldenDump）。
 - **驗證**：`dotnet test`（標準答案 `db/schema.sql`、`db/*.json`、`db/migrate-v18.json`、`util/folder-suggest.json`）；虛擬機：舊版的資料開新版（側欄展開、排序的狀態接上）、改名、合併、刪除、拖曳、自動加入、匯入封包各走一次，側欄截圖。
 
+### 11.52 麥克風、電腦聲音分開聽，麥克風的「建議收錄」（R119，M§93、D201）
+
+- **檔案**：不拆，同 M§93.1。
+- **偵測**：`Shiyin.Core/Transcribe/MicRegions.cs`：`Detect(float?[] levels) -> MicRegionResult`，規則、常數同 M§93.2（`MicRegions.Rules`），比對標準答案 `pipeline/mic-regions.json`。讀檔 `Shiyin.Services` 的 `MicLevels.Read(path)`：NAudio 讀左聲道、每 100 ms 一格算 RMS 轉 dBFS（下限 −90），整格是 0 記成 null。時機同 M§93.2（錄音停止後轉錄線的第一步、匯入沒有區塊的封包、時間軸的「重新偵測」「偵測」）。
+- **資料**：`MigrationSql.V19`（同 M§93.3，`db/schema.sql` 一致）；`AppDatabase.MicRegions.cs`（同名方法，重疊合併、`origin` 的規則同 Mac）。編輯會議（§11.23 分割、`EditTimeline`、合併、還原的快照）照 M§93.3；`.shiyin` 的 `micRegions`、`micFloorDb`、`micThresholdDb` 同 Mac（雙向匯入的測試加區塊）。
+- **播放**：`MixedAudioSource`（§11.16）加 `MicGain`、`SystemGain`、`GateMic`、`Regions`（`lock` 保護，UI 執行緒寫、`SampleRequested` 讀）。每次送 0.1 秒時用這批的開始時間算 `gate(t)`（10 ms 淡入淡出），`m = (L × MicGain × gate + R × SystemGain) × 0.7071`，同 M§93.4；算法放 `ChannelMix.MixGated`（單元測試在 `UtilTests`）。`Player.SetChannels(...)` 只改狀態，不重建 `MediaStreamSource`。`MainState` 讀寫 `play_channels`、`play_mic_regions`。
+- **畫面**：`Shiyin.App/Views/MicTrackView.cs`（不用 Win2D，`Canvas` 加 `Rectangle`／`Polyline`，跟 `PlayerBar` 同一條時間軸），放在 `PlayerBar` 上方；內容、互動同 M§93.5（拖曳新增、拖邊界調整、Delete、右鍵 `MenuFlyout`、雙擊播放、收合）。播放列的「兩邊 ▾」`DropDownButton`、「麥克風只播建議收錄」`CheckBox`。
+- **匯出**：`MediaFoundationCompressor.Export(…, mixChannels, micRegions)`：勾「麥克風只保留建議收錄」時在 `ChannelMix.ToMono` 前對左聲道乘 `gate(t)`（`MixGated`），m4a、wav 照舊（§11.16）。`ExportDialog` 的勾選同 M§93.6，設定 `Settings.ExportMicRegionsOnly`。
+- **DEBUG**：控制通道的 `micregions`、`playmode`，名稱和參數同 Mac；`state` 的 `player.mix` 同 Mac。
+- **驗證**：`dotnet test`（標準答案 `pipeline/mic-regions.json`、`db/`、封包、`MixGated` 的取樣、編輯會議後的區塊）；虛擬機 `record-sim` 錄一段 6 分鐘以上，`micregions list`、匯出 m4a／wav 讀回取樣（勾的時候區塊外的麥克風是 0），時間軸截圖。虛擬機沒有音效裝置，播放的切換要真的 Windows 電腦（`[~]`）。
+
 ## 12. 系統整合
 
 ### 12.1 單一執行個體、開檔

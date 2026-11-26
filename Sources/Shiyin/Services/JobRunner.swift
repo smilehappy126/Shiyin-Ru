@@ -224,6 +224,8 @@ final class JobRunner {
     /// 自動放進資料夾了（design §72）：會議 id、資料夾
     @ObservationIgnored var onOrganized: ((Int64, Int64?) -> Void)?
     @ObservationIgnored var onAudioReplaced: ((Int64) -> Void)?
+    /// 麥克風的「建議收錄」偵測好了（design §93.2）
+    @ObservationIgnored var onMicRegions: ((Int64) -> Void)?
     /// 正式版取代了使用者改過的草稿（design §21.3）
     @ObservationIgnored var onEditedDraftReplaced: ((Int64) -> Void)?
     /// 重新辨識說話者做完（分出幾位）或失敗（design §23.3）
@@ -397,6 +399,16 @@ final class JobRunner {
 
     private func transcribe(_ job: Job, lane: JobLane) async throws {
         guard let meeting = try db.meeting(job.meetingId) else { return }
+        // 麥克風的「建議收錄」（R119.3、design §93.2）：錄音停止後的第一步，讀原始的錄音；失敗不影響轉錄
+        if meeting.channels == "both", meeting.micFloorDb == nil, meeting.hasAudio {
+            let db = db, id = job.meetingId
+            do {
+                try await Task.detached(priority: .userInitiated) { try MicRegions.run(id, db: db) }.value
+                onMicRegions?(id)
+            } catch {
+                log.error("mic regions failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
         let startedAt = Date()
         let payload = (try? JSONDecoder().decode(TranscribePayload.self, from: Data((job.payload ?? "{}").utf8))) ?? TranscribePayload()
         func makePipeline(local: Bool) throws -> TranscriptionPipeline {

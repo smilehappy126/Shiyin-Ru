@@ -3250,6 +3250,93 @@ CREATE INDEX meetings_folder ON meetings(folder_id);
   - 輸出 `{"folders": SELECT id, name, created_at FROM folders ORDER BY id, "folder_rules": SELECT folder_id, keywords, people, template_id, created_at FROM folder_rules ORDER BY folder_id, "meetings": SELECT id, title, folder_id, deleted_at FROM meetings ORDER BY id}`，Windows 逐筆比對。
 - Mac DEBUG：用使用者正式資料庫的複本（`sqlite3 .backup`）跑 migration：每場會議轉換前後的資料夾名字一樣、條件一樣多、側欄展開的資料夾還是展開（測前存 defaults、測後還原）。改名、合併、刪除、移進移出、新資料夾、拖曳、自動加入、匯入封包到資料夾、在資料夾裡錄音（`record-sim`）各走一次，看 state 和側欄截圖。
 
+## 93. 麥克風、電腦聲音分開聽，麥克風的「建議收錄」（R119，D201）
+
+Windows 的做法在 design-windows §11.52。只對 `meetings.channels == 'both'` 的會議（下面簡稱「兩軌的會議」）。
+
+### 93.1 檔案：不拆（D201）
+
+錄音照舊是一個雙聲道檔（§5.2：左聲道麥克風、右聲道電腦聲音；轉錄完壓成雙聲道 m4a，§6.4）。畫面上的「兩軌」是同一個檔的兩個聲道，所以時長、時間點一定對齊。錄音、壓縮、轉錄、編輯會議的錄音（§81.2）都不改。
+
+### 93.2 偵測（`Transcribe/MicRegions.swift`，純邏輯＋讀檔）
+
+- 讀檔：`MicRegions.levels(url) -> [Float]`：用 AVAudioFile 讀左聲道（16 kHz），每 100 ms 一格算 RMS 轉 dBFS（下限 −90）。整格全是 0 的（暫停麥克風 §90、硬體靜音）記成 nil。一小時 36000 格，只存在記憶體（時間軸畫波形也用這份）。
+- `MicRegions.detect(levels) -> Result{ floorDb, thresholdDb, regions }`：
+  1. 基準 `floorDb`：從頭開始取前 600 個不是 nil 的格子（前 1 分鐘有聲音的部分）的 dBFS 平均。不到 600 格就用全部；全部不到 100 格（10 秒）→ 不偵測（`Result.tooLittle`）。
+  2. 門檻 `thresholdDb = max(floorDb + 6, −50)`。
+  3. 超過門檻（大於，不含等於）的格子連成區塊；區塊間隔 < 5.0 秒的接起來（使用者：「改成間隔不到5秒的接起來」）；接起來後短於 0.4 秒的丟掉（補之前算，避免一下敲桌聲）；每塊前面補 0.3 秒、後面補 0.5 秒（夾在 0～長度裡，補完重疊的接起來）。
+  4. 全部用格數（整數）算，最後才除以 10 換成秒，Mac、Windows 算出來的數字一樣。
+  5. 太少（`tooLittle`）：門檻寫 NULL、基準照算（全部沒有聲音時寫 −90），所以「基準 NULL」才是還沒偵測。
+- 常數放 `MicRegions.Rules`（`baselineSeconds = 60`、`marginDb = 6`、`minThresholdDb = −50`、`joinGap = 5.0`、`padBefore = 0.3`、`padAfter = 0.5`、`minLength = 0.4`），Windows 照抄；標準答案 `pipeline/mic-regions.json`（fixtures 裡加幾串合成的 levels：一般、前 1 分鐘有人說話、有暫停、太短、全是 nil）。
+- 時機：
+  - 錄音停止後，轉錄線的第一步（解碼之前，讀原始 WAV）；結果寫進資料庫，畫面馬上看得到，不等轉錄。條件是兩軌的會議、基準是 NULL，所以以前錄的會議重新轉錄時也會偵測；失敗只記 log，不影響轉錄。
+  - 匯入沒有 `micRegions` 的 `.shiyin`（`channels == both`）後。
+  - 時間軸的「重新偵測」「偵測建議收錄」（這一版以前錄的會議）：輔助線（§21.2）。
+- 「重新偵測」：刪掉 `origin = 'auto'` 的，重新偵測後跟 `origin = 'user'` 的重疊的捨棄（使用者的優先），寫進新的 `floor_db`、`threshold_db`。
+
+### 93.3 資料（migration `v19`）
+
+```sql
+CREATE TABLE mic_regions (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+                          start REAL NOT NULL, end REAL NOT NULL,
+                          origin TEXT NOT NULL);                       -- auto / user（使用者新增或調整過）
+CREATE INDEX mic_regions_meeting ON mic_regions(meeting_id, start);
+ALTER TABLE meetings ADD COLUMN mic_floor_db REAL;                    -- NULL：還沒偵測
+ALTER TABLE meetings ADD COLUMN mic_threshold_db REAL;
+ALTER TABLE meetings ADD COLUMN play_channels TEXT NOT NULL DEFAULT 'both';  -- both / mic / system（R119.2）
+ALTER TABLE meetings ADD COLUMN play_mic_regions INTEGER NOT NULL DEFAULT 0; -- R119.5
+```
+
+- `AppDatabase`：`micRegions(meetingId)`、`replaceAutoMicRegions(meetingId, result)`、`addMicRegion`、`updateMicRegion`（改了就變 `user`）、`deleteMicRegion`、`clearMicRegions`、`setPlayChannels`、`setPlayMicRegions`。區塊不重疊：新增、調整時跟別塊重疊就合併成一塊（`user`）。
+- 編輯會議（§81.1 的表加一列）：每個區塊跟每個保留的片段取交集，有交集的部分用 `EditPlan.map` 對應；對應後相鄰（間隔 < 0.05 秒）的接起來；`origin` 照舊。分成兩場：`≥ 切點` 的搬到新的那場、減掉切點，跨過切點的切成兩塊。合併：另一場的區塊照片段對應過來；基準、門檻用這場（先開的那場）的。`EditSnapshot.micRegions`（沒有時不寫，舊的快照、標準答案不變）：還原時整份換回來。§64 的從某一句分成兩場同一套。
+- `.shiyin`：`meeting.json` 加 `micRegions: [{start, end, origin}]`、`micFloorDb`、`micThresholdDb`（沒有就不寫）；`play_*` 不進封包。
+
+### 93.4 播放（`ChannelMix`、`Player`）
+
+- `ChannelMix.State` 加上（用 `OSAllocatedUnfairLock` 包起來，主執行緒寫、tap 讀）：`micGain`、`systemGain`（0 或 1）、`gateMic: Bool`、`regions: [ClosedRange<Double>]`（排好序）。
+- tap 的 process：`MTAudioProcessingTapGetSourceAudio` 傳入 `timeRangeOut` 取得這一批的開始時間。每個取樣 `m = (L × micGain × gate(t) + R × systemGain) × 0.7071`（同 §49.1），`gate(t)` 在區塊裡是 1、外面是 0，邊界 10 ms 線性淡入淡出（避免爆音）。只聽一邊時一樣乘 0.7071，跟現在兩邊混在一起時同一邊的音量相同。
+- `Player.load(_:mixChannels:)` 不變；新增 `setChannels(_:gateMic:regions:)` 只改 tap 的狀態，不重建 `AVPlayerItem`，播放不中斷。`AppModel` 在載入會議、改選擇、區塊變了時呼叫，並寫回 `play_channels`、`play_mic_regions`。
+- 倍速播放時 tap 拿到的是原本的時間（變速在 tap 之後），`gate` 照樣對。
+
+### 93.5 畫面（`Views/MicTrackView.swift`，放在 `PlayerBar` 上方）
+
+```
+麥克風  ▁▂▅▇▅▂▁▁▁▁▂▆▇▇▆▃▁▁▁▁▁▁▃▅▆▅▂▁   ┄┄┄ 門檻
+        [▓▓▓▓▓]      [▓▓▓▓▓▓▓]        [▓▓▓▓▓]     ← 建議收錄
+播放列  ▶  12:34 / 58:20   1×   [兩邊 ▾]  ☐ 麥克風只播建議收錄
+```
+
+- 只在兩軌的會議顯示；可以收合（記在 `AppSettings.micTrackCollapsed`），收合時只剩一行標題。
+- 波形：`MicRegions.levels` 的 dBFS 畫成長條（−60～0 dB），跟播放列同一條時間軸、同一個縮放；播放位置一條直線。門檻是虛線；區塊是半透明的強調色（`Theme`），選到時加外框。
+- 編輯：
+  - 新增：在沒有區塊的地方拖曳（拖不到 0.4 秒不算）；點一下（沒拖）是跳到那個時間。
+  - 調整：滑到區塊兩邊 4 pt 內游標變成左右箭頭，拖曳改開始、結束，吸附到 0.1 秒；不能拖過另一塊（碰到就合併）。
+  - 選取：點區塊；Delete 刪掉選到的；雙擊從開始播。
+  - 右鍵（§79 的 `floatingContextMenu`）：區塊上「從這裡播放」「刪除這段」；空白處「重新偵測」「全部清除…」（確認）。
+  - 輸入框、IME 不涉及；鍵盤只處理 Delete、Esc（取消選取）。
+- 沒偵測過：時間軸寫「還沒偵測建議收錄」＋按鈕「偵測」；`tooLittle`：「麥克風幾乎沒有錄到聲音，沒辦法偵測」。偵測中有進度圈。
+- 播放列：「兩邊 ▾」選單（兩邊、只麥克風、只電腦聲音）；勾選「麥克風只播建議收錄」（只電腦聲音時停用）。滑鼠提示寫用途。
+
+### 93.6 匯出（`AudioExporter`）
+
+- `ExportSheet` 的「錄音」在兩軌的會議多一個勾選「麥克風只保留建議收錄」（`AppSettings.exportMicRegionsOnly`，預設關）；說明「其餘的麥克風會是沒有聲音，電腦聲音全部保留」。沒有區塊時停用並寫原因。
+- 不勾：照 §49.1（不變）。
+- 勾：`AVAssetReader` 解碼成 16 kHz 雙聲道 Float32 → 依區塊對左聲道乘 `gate(t)`（同 91.4 的淡入淡出）→ 混成 `m`（同 91.4）→ wav 寫單聲道 16-bit；m4a 用 `AVAudioFile`（AAC，雙聲道兩邊相同，同 §49.1）。取樣數跟原檔一樣。
+- `.shiyin` 照舊放原始的雙聲道檔。
+
+### 93.7 DEBUG、驗證
+
+- 指令：`micregions <id> list|detect|add <開始> <結束>|update <rid> <開始> <結束>|delete <rid>|clear`（結果寫 JSON）；`playmode <both|mic|system> [gate on|off]`；`state` 的 `player.mix` 加 `micPeak`、`systemPeak`、`gateMic`。
+- 驗證：
+  1. `record-sim <音檔> 1 1` 錄一段 6 分鐘以上（左聲道前 1 分鐘放噪音、之後噪音加人聲），停止後 `micregions list`：基準約等於噪音的音量、區塊對到人聲。
+  2. `playmode mic gate on` 播到區塊外：`micPeak = 0`；`playmode system`：`micPeak = 0`、`systemPeak` 正常；切換中 `currentTime` 不跳。
+  3. 匯出 wav、m4a（勾、不勾）：讀取樣，勾的時候區塊外只剩電腦聲音（右聲道 × 0.7071），長度跟原檔一樣；不勾跟 §49.3 一樣。
+  4. 編輯會議：裁掉開頭、刪中間一段、分兩場、合併、還原，每一步 `micregions list` 的時間對；從某一句分成兩場也一次。
+  5. `.shiyin` 匯出再匯入區塊一樣；拿掉 `micRegions` 的封包匯入後自動偵測。
+  6. 時間軸截圖（淺色、深色、窄視窗、收合）。
+- 要使用者：真的滑鼠拖曳新增、調整邊界、Delete；真的麥克風在安靜、吵的地方各錄一次看門檻。
+
 ## 14. 決策紀錄
 
 | # | 決策 | 不採用的方案與原因 |
@@ -3398,3 +3485,4 @@ CREATE INDEX meetings_folder ON meetings(folder_id);
 | D198 | 暫停麥克風時檔案裡那一聲道寫 0，不是不寫（§90、R116；GitHub #21） | 暫停時不寫麥克風那一聲道、只寫電腦聲音：兩聲道的時間會錯開，筆記、重點的時間點、說話者辨識都要另外處理。改成只錄電腦聲音的單聲道檔：一場錄音中途換格式，轉錄、播放、匯出都要改。自動偵測會議軟體的靜音：系統看不出來（R116 的「不做」） |
 | D199 | 詞彙表的檔案用一行一個詞的純文字，匯入一律合併（§91、R117；GitHub #25） | CSV 或 JSON：詞彙表只有一欄，純文字用任何編輯器都能改、Excel 另存的 CSV 照樣讀得懂；要記建立時間、來源再說。匯入時讓使用者選「合併／取代」：多一個選擇，選錯會把整份詞彙表洗掉；要取代的人可以先全選刪除（R94.3） |
 | D200 | 資料夾改用整數 id 辨識，名字只顯示，對外的格式（封包、MCP）照舊用名字（§92、R118） | 繼續用名字：改名要同時改會議、條件、資料夾表、側欄的鍵，漏一處就對不上，也做不了巢狀。路徑當名字（「A/B」）做巢狀：在名字上再疊一層，改上層的名字要改所有子資料夾和會議。保留 `meetings.folder` 欄位不用：之後的人容易照名字寫回去 |
+| D201 | 「麥克風、電腦聲音分開」用同一個雙聲道檔的兩個聲道，不拆成兩個檔；建議收錄的基準用前 1 分鐘有聲音部分的平均 + 6 dB（§93、R119） | 錄完拆成兩個檔：錄音、壓縮、編輯會議（§81）、封包、Windows 都要改成同時處理兩個檔，還多了兩邊不同步的風險；兩個聲道本來就是同一個時鐘、同樣長度。基準用最小值或低百分位：比較接近真正的環境聲，但使用者要求平均；平均裡有說話聲，所以只加 6 dB（不是 12 dB）。一路用最近幾分鐘的平均：門檻跟著說話多寡飄，區塊前後不一致（使用者：「前 1 分鐘算一次就好」）|

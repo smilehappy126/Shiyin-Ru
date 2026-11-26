@@ -4,6 +4,7 @@ using Shiyin.Data;
 using Shiyin.IO;
 using Shiyin.Localization;
 using Shiyin.Model;
+using Shiyin.Transcribe;
 
 namespace Shiyin.Services;
 
@@ -19,6 +20,13 @@ public static class MeetingPackage
         public static PackageException TooNew(int version) => new(L.F("這個封包是新版拾音匯出的（格式 %lld），請先更新拾音再匯入", version));
     }
 
+    /// <summary>meeting.json 的麥克風區塊欄位：基準有值（偵測過）才寫（同 Mac 的 micFields）</summary>
+    public static PackageJson.MeetingInfo WithMicRegions(PackageJson.MeetingInfo info, Meeting m, IEnumerable<MicRegion> regions) =>
+        m.MicFloorDb is not double floor ? info : info with
+        {
+            MicFloorDb = floor, MicThresholdDb = m.MicThresholdDb, MicRegions = [.. regions.Select(r => (r.Start, r.End, r.Origin))],
+        };
+
     public static void Export(ExportBundle b, string destination, ShiyinPaths paths, string appVersion)
     {
         var m = b.Meeting;
@@ -29,10 +37,10 @@ public static class MeetingPackage
             using (var zip = ZipFile.Open(temp, ZipArchiveMode.Create))
             {
                 Add(zip, "manifest.json", PackageJson.Write(new PackageJson.Manifest(PackageJson.FormatVersion, appVersion, Clock.Now(), audioName)));
-                Add(zip, "meeting.json", PackageJson.Write(new PackageJson.MeetingInfo(
+                Add(zip, "meeting.json", PackageJson.Write(WithMicRegions(new PackageJson.MeetingInfo(
                     m.Title, m.TitleLocked, m.MeetingDate, m.Participants, m.SourceFilename, m.DurationSeconds, m.TemplateId, m.UserNotes,
                     m.Channels, b.FolderName, m.Language, b.Notes, m.NotesBy,
-                    b.Speakers.Select(s => (s.Key, s.Value)).ToList(), b.Bookmarks.Select(x => (x.Time, x.Label)).ToList())));
+                    b.Speakers.Select(s => (s.Key, s.Value)).ToList(), b.Bookmarks.Select(x => (x.Time, x.Label)).ToList()), m, b.MicRegions)));
                 Add(zip, "transcript.json", PackageJson.Write(b.Segments.Select(s =>
                     new PackageJson.SegmentInfo(s.Start, s.End, s.Text, s.LowConfidence, s.Speaker))));
                 // 錄音已經壓縮過，不再壓
@@ -124,6 +132,12 @@ public static class MeetingPackage
                 }).ToList(), info.DurationSeconds ?? 0, 0);
                 foreach (var (idx, name) in info.Speakers) db.RenameSpeaker(id, idx, name);
                 foreach (var (time, label) in info.Bookmarks) db.AddBookmark(id, time, label);
+                if (info.MicFloorDb is double floor)
+                {
+                    db.SaveMicDetection(id, new MicRegionResult(floor, info.MicThresholdDb, []));
+                    foreach (var (start, end, origin) in info.MicRegions ?? [])
+                        if (end > start) db.ImportMicRegion(id, start, end, origin == MicRegion.User ? MicRegion.User : MicRegion.Auto);
+                }
                 if (info.Notes is not null) db.SaveNotes(id, info.Notes, info.NotesBy, L.T("匯入"));
                 db.UpdateUserNotes(id, info.UserNotes);
                 foreach (var (doc, entry) in documents)

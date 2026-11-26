@@ -329,6 +329,16 @@ public sealed partial class AppController
         {
             var meeting = await Task.Run(() => MeetingPackage.Import(file, Db, Paths, folder));
             Changed?.Invoke(null);
+            // 舊的封包沒有麥克風的「建議收錄」：背景偵測（M§93.2）
+            if (meeting is { Channels: "both", MicFloorDb: null })
+            {
+                var id = meeting.Id!.Value;
+                _ = Task.Run(() =>
+                {
+                    try { if (MicDetection.Run(id, Db, Paths, decoder)) Changed?.Invoke(id); }
+                    catch (Exception e) { Log.Error($"mic regions failed: {e.Message}"); }
+                });
+            }
             Reveal?.Invoke(meeting.Id!.Value);
             Notice?.Invoke(L.F("已匯入「%@」", meeting.DisplayTitle));
         }
@@ -1344,7 +1354,7 @@ public sealed partial class AppController
     {
         if (Db.Meeting(meetingId) is not { } meeting) throw new ExportException(L.T("這場會議已經被刪除，沒辦法匯出"));
         return new ExportBundle(meeting, Db.Segments(meetingId), Db.Speakers(meetingId).ToDictionary(s => s.Idx, s => s.Name),
-            Db.Bookmarks(meetingId), meeting.DecodedNotes) { Documents = Db.Documents(meetingId), FolderName = Db.FolderName(meeting.FolderId) };
+            Db.Bookmarks(meetingId), meeting.DecodedNotes) { Documents = Db.Documents(meetingId), FolderName = Db.FolderName(meeting.FolderId), MicRegions = Db.MicRegions(meetingId) };
     }
 
     /// <summary>寫出檔案；文字格式、封包在背景寫，長會議不卡住畫面（M§21.13）</summary>

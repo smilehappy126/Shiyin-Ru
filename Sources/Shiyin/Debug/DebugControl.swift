@@ -600,6 +600,7 @@ enum DebugControl {
                 }
             }
         case "micpause": model.recorder.setMicPaused(args.count > 1 && args[1] == "on")   // micpause on|off：等於按錄音畫面的麥克風圖示（design §90）
+        case "micregions": micRegions(args)
         case "livestress":   // livestress <秒> <每秒幾行>：錄音中一直塞長短不一（4～300 字）的假即時文字、偶爾一次好幾行，未定稿的字每秒變 20 次，偶爾往上捲再回到底部（design §25）
             let seconds = Double(args[1]) ?? 60, perSecond = max(Double(args.count > 2 ? args[2] : "") ?? 3, 0.5)
             let recorder = model.recorder
@@ -1530,6 +1531,42 @@ enum DebugControl {
 
     /// 無限大、NaN 寫成 -1（JSONSerialization 遇到會丟 Objective-C 例外，整個 app 當掉）
     private static func finite(_ x: CGFloat) -> CGFloat { x.isFinite ? x : -1 }
+
+    /// 麥克風的「建議收錄」（design §93.7）：micregions <會議 id> list|detect|add <開始> <結束>|update <區塊 id> <開始> <結束>|delete <區塊 id>|clear <輸出.json>。
+    /// 先做動作再寫出基準、門檻、所有區塊；detect 另外寫每格音量的格數、有聲音的格數（讀錄音在背景）
+    private static func micRegions(_ args: [String]) {
+        guard args.count >= 4, let id = Int64(args[1]), let output = args.last else { return }
+        let db = AppModel.shared.db, action = args[2]
+        let n = (3...5).map { args.count > $0 + 1 ? Double(args[$0]) ?? 0 : 0 }
+        let rid = args.count > 4 ? Int64(args[3]) : nil
+        Task.detached {
+            var result: [String: Any] = ["action": action]
+            do {
+                switch action {
+                case "detect":
+                    guard let meeting = try db.meeting(id) else { throw LLMError.badOutput("no meeting") }
+                    let levels = try MicRegions.levels(meeting.audioURL)
+                    result["frames"] = levels.count
+                    result["voiced"] = levels.compactMap { $0 }.count
+                    try db.saveMicDetection(id, MicRegions.detect(levels))
+                case "add": try db.addMicRegion(id, start: n[0], end: n[1])
+                case "update": if let rid { try db.updateMicRegion(rid, start: n[1], end: n[2]) }
+                case "delete": if let rid { try db.deleteMicRegion(rid) }
+                case "clear": try db.clearMicRegions(id)
+                default: break
+                }
+                let meeting = try db.meeting(id)
+                result["floorDb"] = meeting?.micFloorDb ?? NSNull()
+                result["thresholdDb"] = meeting?.micThresholdDb ?? NSNull()
+                result["channels"] = meeting?.channels ?? ""
+                result["regions"] = try db.micRegions(id).map { ["id": $0.id ?? 0, "start": $0.start, "end": $0.end, "origin": $0.origin] as [String: Any] }
+            } catch {
+                result["error"] = error.localizedDescription
+            }
+            let finished = result
+            await MainActor.run { write(finished, to: output) }
+        }
+    }
 
     private static func write(_ object: [String: Any], to path: String) {
         guard JSONSerialization.isValidJSONObject(object),

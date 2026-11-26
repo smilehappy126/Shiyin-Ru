@@ -16,6 +16,8 @@ struct ExportBundle {
     var screens: [MeetingDocument] = []
     /// 會議所在資料夾的名字（R118：封包對外照舊寫名字）；不在資料夾是空字串
     var folderName: String = ""
+    /// 麥克風的「建議收錄」（design §93.3）：只有 .shiyin 封包用到
+    var micRegions: [MicRegion] = []
 
     func speakerName(_ idx: Int?) -> String? { idx.map { speakers[$0] ?? text.speaker($0) } }
 
