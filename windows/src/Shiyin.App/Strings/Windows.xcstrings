@@ -1497,6 +1497,23 @@
         }
       }
     },
+    "回到整場（Ctrl+0）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show the whole meeting (Ctrl+0)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回到整场（Ctrl+0）"
+          }
+        }
+      }
+    },
     "在打開的網頁登入，登入完會回到拾音": {
       "extractionState": "manual",
       "localizations": {
